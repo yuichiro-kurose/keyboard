@@ -74,13 +74,15 @@ std::vector<std::vector<int>> SplitKey(std::vector<std::vector<int>> weight) {
 void Place(std::vector<std::vector<int>>& keyboard, std::string doc) {
   // finger[i] := indexがiのキーを担当する指の番号
   std::vector<int> finger = {4, 3, 2, 1, 1, 4, 3, 2, 1, 1, 4, 3, 2, 1, 1};
+  // cost[i] := コストがiであるキーのindex
   std::vector<std::vector<int>> cost(5);
   cost[0] = {7, 8};
   cost[1] = {2, 5, 6};
   cost[2] = {1, 3, 9, 12, 13};
   cost[3] = {4, 10, 11};
   cost[4] = {0, 14};
-  for (int hand = 0; hand < 1; hand++) {
+  // コストの和が最小となるようなキーの配置を全通り試し、同じ指の連続使用回数が最も少ない配置を採用
+  for (int hand = 0; hand < 2; hand++) {
     do {
       do {
         do {
