@@ -288,7 +288,6 @@ void PlaceKeysOnHands(
   }
 }
 
-// --- メイン処理 ---
 int main() {
   std::string doc_text = LoadDoc();
   std::vector<int> letters_sorted_by_frequency =
