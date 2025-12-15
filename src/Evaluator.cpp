@@ -74,6 +74,7 @@ std::vector<std::vector<int>> LoadLayout() {
   return layout;
 }
 
+// @brief 各アルファベットを担当する手を表すビットマスクを構築する
 int BuildHandBitmask(std::vector<int> left_layout) {
   int hand_bitmask = 0;
   for (int key_index = 0; key_index < kNumHandPositions; key_index++) {
