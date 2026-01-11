@@ -61,26 +61,11 @@ std::vector<std::vector<int>> BuildBigramWeights(const std::string& doc_text) {
     int idx1 = doc_text[i] - 'a';
     int idx2 = doc_text[i + 1] - 'a';
     bigram_weights[idx1][idx2]++;
-    bigram_weights[idx2][idx1]++;
-  }
-  return bigram_weights;
-}
-
-// @brief 指ごとの連続使用コスト（同じ指の文字ペアの重み総和）を計算する
-int CalcFingerContinuityCost(
-    const std::vector<std::vector<int>>& finger_letter_assignments,
-    const std::vector<std::vector<int>>& bigram_weights) {
-  int total_cost = 0;
-  for (const auto& letters_for_this_finger : finger_letter_assignments) {
-    for (size_t i = 0; i < letters_for_this_finger.size(); ++i) {
-      for (size_t j = i + 1; j < letters_for_this_finger.size(); ++j) {
-        int letter_idx1 = letters_for_this_finger[i];
-        int letter_idx2 = letters_for_this_finger[j];
-        total_cost += bigram_weights[letter_idx1][letter_idx2];
-      }
+    if (idx1 != idx2) {
+      bigram_weights[idx2][idx1]++;
     }
   }
-  return total_cost;
+  return bigram_weights;
 }
 
 // --- Evaluation Logic ---
@@ -88,6 +73,7 @@ int CalcFingerContinuityCost(
 struct KeyInfo {
   int hand_id;   // 0: Left, 1: Right
   int finger_id; // 0: Index, 1: Middle, 2: Ring, 3: Pinky
+  int cost;
   bool valid;    // True if a letter is assigned
 };
 
@@ -105,8 +91,7 @@ int main() {
   // Input format expects 15 tokens for Left Hand, then 15 tokens for Right Hand.
   // Use '_' for empty keys.
   // This matches the visual output format of Generator.cpp if copied linearly.
-  std::vector<KeyInfo> char_map(kNumAlphabet, {-1, -1, false});
-  std::vector<std::vector<int>> finger_letter_assignments(kNumFingers);
+  std::vector<KeyInfo> char_map(kNumAlphabet, {-1, 0, -1, false});
 
   std::cerr << "Enter Hand 0 (Left) Layout (15 keys, row by row):" << std::endl;
   for (int i = 0; i < kNumHandPositions; ++i) {
@@ -115,8 +100,8 @@ int main() {
     if (token.length() == 1 && 'a' <= token[0] && token[0] <= 'z') {
       int char_idx = token[0] - 'a';
       int finger_idx = kHandLayout[i].finger_id_;
-      char_map[char_idx] = {0, finger_idx, true};
-      finger_letter_assignments[finger_idx].push_back(char_idx);
+      int cost = kHandLayout[i].cost_group_;
+      char_map[char_idx] = {0, finger_idx, cost, true};
     }
   }
 
@@ -124,42 +109,7 @@ int main() {
   for (int i = 0; i < kNumHandPositions; ++i) {
     std::string token;
     std::cin >> token;
-    // Generator.cpp outputs right hand mirrored in print logic, 
-    // but the array index mapping follows kHandLayout logic (0-14).
-    // Note: Generator.cpp's PrintHandLayout logic for Hand 1:
-    // key_idx = (row + 1) * 5 - col - 1;
-    // This means the user input (visual order) needs to be mapped back to logical index 0-14.
-    // Visual Input: Row 0 (Cols 0-4), Row 1...
-    
-    // However, to keep input simple, we assume the user provides the visual layout strings.
-    // We must reverse-engineer the visual position to the logical index for Hand 1.
-    // Logical 0-4 = Row 0 (Right to Left visually? No, standard split keyboards usually mirror).
-    // Let's look closely at Generator.cpp PrintHandLayout:
-    // Hand 0: key_idx = row * 5 + col
-    // Hand 1: key_idx = (row + 1) * 5 - col - 1
-    // Visual Row 0, Col 0 (Top Left of Right Hand block) -> Row 0, Col 0 -> Index 4.
-    // Visual Row 0, Col 4 (Top Right of Right Hand block) -> Row 0, Col 4 -> Index 0.
-    // This implies Hand 1 indices fill form Right-to-Left (Mirror).
-    
-    // BUT, kHandLayout defines fingers for indices 0-14.
-    // Index 0 is Pinky (Finger 3). 
-    // If Visual Input is "p y f g c", 'p' is at Col 0. 
-    // Is Col 0 Index 4 (Index Finger)? No, Index 0 is Pinky.
-    // Let's check kHandLayout again. 
-    // Index 0: Finger 3 (Pinky).
-    // Index 4: Finger 0 (Index).
-    // So for Hand 1:
-    // If 'p' is at Visual Col 0 (Leftmost of Right hand block), it should be Index Finger?
-    // Usually standard QWERTY: Right hand 'y' (Index) is left-most. 'p' (Pinky) is right-most.
-    // Generator Output:
-    // col 0..4.
-    // key_idx formula: (row+1)*5 - col - 1.
-    // Col 0 -> 5 - 0 - 1 = 4. (Index 4 is Finger 0/Index). Correct.
-    // Col 4 -> 5 - 4 - 1 = 0. (Index 0 is Finger 3/Pinky). Correct.
-    
-    // Therefore: The user inputs visual order (Col 0 to 4).
-    // We map that `visual_idx` to `logical_idx` using the formula.
-    
+
     int row = i / 5;
     int col = i % 5;
     int logical_idx = (row + 1) * 5 - col - 1;
@@ -167,23 +117,35 @@ int main() {
     if (token.length() == 1 && 'a' <= token[0] && token[0] <= 'z') {
       int char_idx = token[0] - 'a';
       int finger_idx = kHandLayout[logical_idx].finger_id_;
-      char_map[char_idx] = {1, finger_idx, true};
-      finger_letter_assignments[finger_idx].push_back(char_idx);
+      int cost = kHandLayout[i].cost_group_;
+      char_map[char_idx] = {1, finger_idx, cost, true};
     }
   }
 
   // 3. Calculate Metrics
 
-  long long same_hand_consecutive_count = 0;
-  long long same_finger_consecutive_count = 0;
-  // Note: "Finger movement cost" as per Generator definition is sum of Bigram Weights
-  // for letters on the same finger.
-  
   // A: Calculate Finger Cost using Generator's definition (Static Graph Weight)
   std::vector<std::vector<int>> bigram_weights = BuildBigramWeights(doc_text);
-  int finger_continuity_cost = CalcFingerContinuityCost(finger_letter_assignments, bigram_weights);
+
+  int hand_continuity_cost = 0;
+  int finger_continuity_cost = 0;
+
+  for (int i = 0; i < kNumAlphabet; i++) {
+    for (int j = i; j < kNumAlphabet; j++) {
+      if (char_map[i].hand_id == char_map[j].hand_id) {
+        hand_continuity_cost += bigram_weights[i][j];
+        if (char_map[i].finger_id == char_map[j].finger_id) {
+          finger_continuity_cost += bigram_weights[i][j];
+        }
+      }
+    }
+  }
 
   // B: Calculate Dynamic metrics by iterating document
+
+  long long same_hand_consecutive_count = 0;
+  long long same_finger_consecutive_count = 0;
+
   for (size_t i = 0; i < doc_text.length() - 1; ++i) {
     int c1 = doc_text[i] - 'a';
     int c2 = doc_text[i+1] - 'a';
@@ -206,12 +168,21 @@ int main() {
     }
   }
 
+  long long cost = 0;
+
+  for (size_t i = 0; i < doc_text.length(); ++i) {
+    int c = doc_text[i] - 'a';
+    cost += char_map[c].cost;
+  }
+
   // 4. Output Results
   std::cout << "\n=== Evaluation Results ===" << std::endl;
   std::cout << "Target Document Length: " << doc_text.length() << " characters" << std::endl;
-  std::cout << "1. One-hand consecutive usage count: " << same_hand_consecutive_count << std::endl;
-  std::cout << "2. Finger movement cost (Algorithm Definition): " << finger_continuity_cost << std::endl;
-  std::cout << "3. Same finger consecutive usage count (Actual): " << same_finger_consecutive_count << std::endl;
+  std::cout << "1. Hand movement cost (Algorithm Definition): " << hand_continuity_cost << std::endl;
+  std::cout << "2. One-hand consecutive usage count (Actual): " << same_hand_consecutive_count << std::endl;
+  std::cout << "3. Finger movement cost (Algorithm Definition): " << finger_continuity_cost << std::endl;
+  std::cout << "4. Same finger consecutive usage count (Actual): " << same_finger_consecutive_count << std::endl;
+  std::cout << "5. Difficulty in pressing: " << cost << std::endl;
   
   return 0;
 }

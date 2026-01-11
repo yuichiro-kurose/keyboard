@@ -86,7 +86,9 @@ std::vector<std::vector<int>> BuildBigramWeights(const std::string& doc_text) {
     int idx1 = doc_text[i] - 'a';
     int idx2 = doc_text[i + 1] - 'a';
     bigram_weights[idx1][idx2]++;
-    bigram_weights[idx2][idx1]++;
+    if (idx1 != idx2) {
+      bigram_weights[idx2][idx1]++;
+    }
   }
   return bigram_weights;
 }
@@ -97,7 +99,7 @@ int CalcHandConflictCost(
     const std::vector<std::vector<int>>& bigram_weights) {
   int total_cost = 0;
   for (int i = 0; i < kNumAlphabet; i++) {
-    for (int j = i + 1; j < kNumAlphabet; j++) {
+    for (int j = i; j < kNumAlphabet; j++) {
       if (((hand_bitmask >> i) & 1) == ((hand_bitmask >> j) & 1)) {
         total_cost += bigram_weights[i][j];
       }
@@ -142,7 +144,7 @@ int CalcFingerContinuityCost(
   int total_cost = 0;
   for (const auto& letters_for_this_finger : finger_letter_assignments) {
     for (size_t i = 0; i < letters_for_this_finger.size(); ++i) {
-      for (size_t j = i + 1; j < letters_for_this_finger.size(); ++j) {
+      for (size_t j = i; j < letters_for_this_finger.size(); ++j) {
         int letter_idx1 = letters_for_this_finger[i];
         int letter_idx2 = letters_for_this_finger[j];
         total_cost += bigram_weights[letter_idx1][letter_idx2];
