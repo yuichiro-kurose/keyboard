@@ -289,7 +289,14 @@ void PlaceKeysOnHands(
 }
 
 int main() {
+  std::cerr << "Enter Document Text (end with 'END'):" << std::endl;
   std::string doc_text = LoadDoc();
+
+  if (doc_text.empty()) {
+    std::cerr << "Error: Document is empty." << std::endl;
+    return 1;
+  }
+  
   std::vector<int> letters_sorted_by_frequency =
       BuildFrequencyRankedLetters(doc_text);
   std::vector<std::vector<int>> bigram_weights = BuildBigramWeights(doc_text);
